@@ -1,0 +1,116 @@
+name: DFFormer_RealBlurJ
+model_type: ImageCleanModel
+scale: 1
+num_gpu: auto
+manual_seed: 100
+
+datasets:
+  train:
+    name: RealBlurJ_Train
+    type: Dataset_PairedImage
+    dataroot_gt: ../../datasets/RealBlur_J/train/sharp
+    dataroot_lq: ../../datasets/RealBlur_J/train/blur
+    geometric_augs: true
+    filename_tmpl: "{}"
+    io_backend:
+      type: disk
+    use_shuffle: true
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
+    mini_batch_sizes: [8, 5, 4, 2, 1, 1]
+    iters: [184000, 128000, 96000, 72000, 72000, 48000]
+    gt_size: 384
+    gt_sizes: [128, 160, 192, 256, 320, 384]
+    dataset_enlarge_ratio: 1
+    prefetch_mode: cuda
+    pin_memory: true
+
+  val:
+    name: RealBlurJ_Val
+    type: Dataset_PairedImage
+    dataroot_gt: ../../datasets/RealBlur_J/test/sharp
+    dataroot_lq: ../../datasets/RealBlur_J/test/blur
+    crop_size: 256
+    io_backend:
+      type: disk
+
+network_g:
+  type: DFFormer
+  inp_channels: 3
+  out_channels: 3
+  dim: 36
+  enc_blk_nums: [1, 2, 4]
+  middle_blk_num: 5
+  dec_blk_nums: [4, 2, 1]
+  heads_enc: [1, 2, 4]
+  heads_mid: 8
+  ffn_expansion_factor: 2.66
+  bias: true
+  LayerNorm_type: WithBias
+  dual_pixel_task: false
+  window_size_enc: [8, 8, 8]
+  window_size_mid: 8
+  grid_size_enc: [8, 8, 8]
+  grid_size_mid: 8
+  window_size_dct_enc: [0, 0, 0]
+  window_size_dct_mid: 0
+  up_method: upshuffle
+  cs_e: [channel_mlp, channel_mlp]
+  cs_m: [channel_mlp, channel_mlp]
+  cs_d: [channel_mlp, channel_mlp]
+  norm_type_: [["LayerNorm", "LayerNorm"], ["LayerNorm", "LayerNorm"]]
+  qk_norm: [false, false]
+  temp_adj:
+  ffn: ffn
+
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state:
+
+train:
+  total_iter: 600000
+  warmup_iter: -1
+  use_grad_clip: true
+  scheduler:
+    type: CosineAnnealingRestartCyclicLR
+    periods: [184000, 416000]
+    restart_weights: [1, 1]
+    eta_mins: [0.0003, 0.000001]
+  mixing_augs:
+    mixup: false
+    mixup_beta: 1.2
+    use_identity: true
+  optim_g:
+    type: AdamW
+    lr: !!float 3e-4
+    weight_decay: !!float 1e-4
+    betas: [0.9, 0.999]
+  pixel_opt:
+    type: FreqLoss
+    loss_weight: 1
+    reduction: mean
+
+val:
+  window_size: 8
+  val_freq: !!float 4e3
+  save_img: false
+  rgb2bgr: true
+  use_image: true
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+
+logger:
+  print_freq: 1000
+  save_checkpoint_freq: !!float 4e3
+  use_tb_logger: false
+  wandb:
+    project: ~
+    resume_id: ~
+
+dist_params:
+  backend: nccl
+  port: 29500
